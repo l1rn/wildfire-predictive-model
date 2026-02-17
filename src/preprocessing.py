@@ -3,6 +3,7 @@ from src.config import DATA_DIR
 import numpy as np
 
 from rioxarray.raster_array import RasterArray
+from rasterio.features import rasterize
 import xarray as xr
 
 KELVIN = 273.15
@@ -21,7 +22,7 @@ def dimension_unify_xy(
     tp: xr.DataArray,
     vpd: xr.DataArray
 ):
-    rename_dict = {"latitude": "x", "longitude": "y"}
+    rename_dict = {"latitude": "y", "longitude": "x"}
     t2m = t2m.rename(rename_dict)
     d2p = d2p.rename(rename_dict)
     tp = tp.rename(rename_dict)
@@ -38,17 +39,60 @@ def broadcast_static_layers(
     dem = dem.expand_dims(valid_time=main_dim.valid_time)
     lc = lc.expand_dims(valid_time=main_dim.valid_time)
     ghm = ghm.expand_dims(valid_time=main_dim.valid_time)
+    
+    dem = dem.dropna("valid_time", how="all")
+    lc = lc.dropna("valid_time", how="all")
+    ghm = ghm.dropna("valid_time", how="all")
+    
     return dem, lc, ghm
+
+def rasterize_monthly_fire(
+    firms_gdf: pd.DataFrame, 
+    climate_da: xr.DataArray
+):
+    template = climate_da.isel(valid_time=0)
+    fire_rasters = []
+    template_rio: RasterArray = template.rio
+    
+    for time in climate_da.valid_time.values:
+        month = pd.to_datetime(time).to_period("M")
+        monthly_fires = firms_gdf[firms_gdf["year_month"] == month]
+        if len(monthly_fires) == 0:
+            fire_array = np.zeros(template.shape, dtype=np.uint8)
+        else:
+            shapes = [(geom, 1) for geom in monthly_fires.geometry]
+            
+            fire_array = rasterize(
+                shapes,
+                out_shape=template.shape,
+                transform=template_rio.transform(),
+                fill=0,
+                dtype=np.uint8
+            )
+            
+        fire_rasters.append(fire_array)
+        
+    fire_stack = np.stack(fire_rasters)
+    
+    return xr.DataArray (
+        fire_stack,
+        dims=("valid_time", "y", "x"),
+        coords={
+            "valid_time": climate_da.valid_time,
+            "y": template.y,
+            "x": template.x,
+        }
+    )
 
 def process_data():
     """ Data Integration """
     dem = load_static_raster(f"{DATA_DIR}/khmao_topography.tif")
     lc = load_static_raster(f"{DATA_DIR}/khmao_lc_90m.tif")
     human_mod = load_static_raster(f"{DATA_DIR}/khmao_human_mod_90m.tif")
-        
+    
     ds: xr.Dataset = load_meterological(f"{DATA_DIR}/khmao_era5.nc")
     firms = load_firms(f"{DATA_DIR}/khmao_fire_archive.csv")
-        
+            
     t2m_monthly: xr.Dataset = ds["t2m"].resample(valid_time="1ME").mean()
     d2p_monthly = ds["d2m"].resample(valid_time="1ME").mean()
     tp_monthly = ds["tp"].resample(valid_time="1ME").sum()
@@ -79,13 +123,19 @@ def process_data():
         main_dim=t2m_monthly, dem=dem_matched, lc=lc_matched, ghm=human_mod_matched
     )
     
+    fire_monthly = rasterize_monthly_fire(
+        firms_gdf=firms, climate_da=t2m_monthly
+    )
+    
     dataset = xr.Dataset({
         "temp": t2m_monthly,
         "vpd": vpd_monthly,
         "precip": tp_monthly_mm,
         "dem": dem_matched,
         "landcover": lc_matched,
-        "ghm": human_mod_matched
+        "ghm": human_mod_matched,
+        "fire": fire_monthly
     })
-    dataset = dataset.to_dataframe().dropna()
-    print(dataset)
+    dataset = dataset.to_dataframe()
+    dataset = dataset.dropna()
+    print(dataset["fire"].value_counts())

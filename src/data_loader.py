@@ -3,7 +3,7 @@ import rioxarray
 import pandas as pd
 import geopandas as gpd
 
-from typing import Optional, Union
+from typing import Optional
 
 def load_meterological(path: str) -> Optional[xr.Dataset]:
     """Loads ERA5 NetCDF and ensure coordinates are standard."""
@@ -27,6 +27,8 @@ def load_firms(path: str) -> Optional[gpd.GeoDataFrame]:
     """Loads FIRMS CSV and converts to a GeoDataFrame"""
     try:
         df = pd.read_csv(path)
+        df["acq_date"] = pd.to_datetime(df["acq_date"])
+        df["year_month"] = df["acq_date"].dt.to_period("M")
         gdf = gpd.GeoDataFrame(
             df,
             geometry=gpd.points_from_xy(df.longitude, df.latitude),
