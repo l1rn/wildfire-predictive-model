@@ -2,8 +2,12 @@ from src.data_loader import *
 from src.config import DATA_DIR
 import numpy as np
 
+from rioxarray.raster_array import RasterArray
+import xarray as xr
+
 KELVIN = 273.15
-def calculate_vpd(t2m_k, d2m_k) -> float:
+
+def calculate_vpd(t2m_k, d2m_k):
     t_c = t2m_k - KELVIN
     d_c = d2m_k - KELVIN
 
@@ -11,23 +15,77 @@ def calculate_vpd(t2m_k, d2m_k) -> float:
     ea = 610.78 * np.exp((17.2694 * d_c) / (d_c + 237.3))
     return es - ea
 
+def dimension_unify_xy(
+    t2m: xr.DataArray,
+    d2p: xr.DataArray,
+    tp: xr.DataArray,
+    vpd: xr.DataArray
+):
+    rename_dict = {"latitude": "x", "longitude": "y"}
+    t2m = t2m.rename(rename_dict)
+    d2p = d2p.rename(rename_dict)
+    tp = tp.rename(rename_dict)
+    vpd = vpd.rename(rename_dict)
+    
+    return t2m, d2p, tp, vpd
+
+def broadcast_static_layers(
+    main_dim: xr.DataArray,
+    dem: xr.DataArray,
+    lc: xr.DataArray,
+    ghm: xr.DataArray
+):
+    dem = dem.expand_dims(valid_time=main_dim.valid_time)
+    lc = lc.expand_dims(valid_time=main_dim.valid_time)
+    ghm = ghm.expand_dims(valid_time=main_dim.valid_time)
+    return dem, lc, ghm
+
 def process_data():
     """ Data Integration """
     dem = load_static_raster(f"{DATA_DIR}/khmao_topography.tif")
     lc = load_static_raster(f"{DATA_DIR}/khmao_lc_90m.tif")
     human_mod = load_static_raster(f"{DATA_DIR}/khmao_human_mod_90m.tif")
         
-    ds = load_meterological(f"{DATA_DIR}/khmao_era5.nc")
+    ds: xr.Dataset = load_meterological(f"{DATA_DIR}/khmao_era5.nc")
     firms = load_firms(f"{DATA_DIR}/khmao_fire_archive.csv")
-    
-    t2m_monthly = ds["t2m"].resample(valid_time="1ME").mean()
+        
+    t2m_monthly: xr.Dataset = ds["t2m"].resample(valid_time="1ME").mean()
     d2p_monthly = ds["d2m"].resample(valid_time="1ME").mean()
-    t2m_monthly = t2m_monthly.rio.write_crs("EPSG:4326")
-    d2p_monthly = d2p_monthly.rio.write_crs("EPSG:4326")
+    tp_monthly = ds["tp"].resample(valid_time="1ME").sum()
+    tp_monthly_mm = tp_monthly * 1000
     
-    # lc_matched = lc.rio.reproject_match(temp_monthly)
-    # human_mod_matched = human_mod.rio.reproject_match(temp_monthly)
-    # dem_matched = dem.rio.reproject_match(temp_monthly)
-    vpd_monthly = calculate_vpd(t2m_monthly, d2p_monthly)
-    print(vpd_monthly.min().values)
-    print(vpd_monthly.max().values)
+    t2m_rio: RasterArray = t2m_monthly.rio
+    t2m_monthly = t2m_rio.write_crs("EPSG:4326")
+    
+    d2p_rio: RasterArray = d2p_monthly.rio
+    d2p_monthly = d2p_rio.write_crs("EPSG:4326")
+    
+    lc_rio: RasterArray = lc.rio
+    lc_matched = lc_rio.reproject_match(t2m_monthly).squeeze("band", drop=True)
+    
+    human_mod_rio: RasterArray = human_mod.rio
+    human_mod_matched = human_mod_rio.reproject_match(t2m_monthly).squeeze("band", drop=True)
+    
+    dem_rio: RasterArray = dem.rio
+    dem_matched = dem_rio.reproject_match(t2m_monthly).squeeze("band", drop=True)
+
+    vpd_monthly: RasterArray = calculate_vpd(t2m_monthly, d2p_monthly)
+
+    t2m_monthly, d2p_monthly, tp_monthly_mm, vpd_monthly = dimension_unify_xy(
+        t2m=t2m_monthly, d2p=d2p_monthly, tp=tp_monthly_mm, vpd=vpd_monthly
+    )
+    
+    dem_matched, lc_matched, human_mod_matched = broadcast_static_layers(
+        main_dim=t2m_monthly, dem=dem_matched, lc=lc_matched, ghm=human_mod_matched
+    )
+    
+    dataset = xr.Dataset({
+        "temp": t2m_monthly,
+        "vpd": vpd_monthly,
+        "precip": tp_monthly_mm,
+        "dem": dem_matched,
+        "landcover": lc_matched,
+        "ghm": human_mod_matched
+    })
+    dataset = dataset.to_dataframe().dropna()
+    print(dataset)
