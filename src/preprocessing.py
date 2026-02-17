@@ -1,5 +1,5 @@
 from src.data_loader import *
-from src.config import DATA_DIR
+from src.config import DATA_DIR, PROCESSED_DIR
 import numpy as np
 
 from rioxarray.raster_array import RasterArray
@@ -138,4 +138,9 @@ def process_data():
     })
     dataset = dataset.to_dataframe()
     dataset = dataset.dropna()
-    print(dataset["fire"].value_counts())
+    dataset = dataset.drop(columns=['number', 'spatial_ref'])
+    return dataset
+
+def upload_dataset_to_parquet(ds):
+    ds.to_parquet(f"{PROCESSED_DIR}/khmao_master.parquet", index=True)
+    
