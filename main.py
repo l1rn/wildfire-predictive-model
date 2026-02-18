@@ -46,21 +46,45 @@ def main():
         xgb_model = get_xgboost(len(y_train) / y_train.sum())
         rf = get_random_forest()
         
-        # print("=== XGBoost ===")
-        # train_and_evaluate(model=xgb_model, 
-        #                    X_train=X_train, 
-        #                    y_train=y_train, 
-        #                    X_test=X_test, 
-        #                    y_test=y_test,
-        #                    features=features)
-        
-        print("=== Random Forest ===")
-        train_and_evaluate(model=rf, 
+        print("=== XGBoost ===")
+        probs = train_and_evaluate(model=xgb_model, 
                            X_train=X_train, 
                            y_train=y_train, 
                            X_test=X_test, 
                            y_test=y_test,
                            features=features)
+        
+        test = test.copy()
+        test["fire_probability"] = probs
+        
+        july_2025 = test[
+            (test["valid_time"].dt.year == 2025) &
+            (test["valid_time"].dt.month == 7)
+        ]
+
+        risk_map = july_2025.pivot(
+            index="y",
+            columns="x",
+            values="fire_probability"
+        )
+
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(10, 8))
+        plt.imshow(risk_map, origin="lower")
+        plt.colorbar(label="Wildfire Probability")
+        plt.title("Wildfire Risk Forecast – July 2025")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.show()
+        # print("=== Random Forest ===")
+        # train_and_evaluate(model=rf, 
+        #                    X_train=X_train, 
+        #                    y_train=y_train, 
+        #                    X_test=X_test, 
+        #                    y_test=y_test,
+        #                    features=features,
+        #                    test=df)
     finally:
         print("Cleaning processes")
 if __name__ == "__main__":

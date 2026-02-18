@@ -29,3 +29,5 @@ def train_and_evaluate(
     ).sort_values(ascending=False)
     
     print(importance)
+    
+    return probs
