@@ -144,7 +144,6 @@ def process_data():
     return dataset
 
 def upload_dataset_to_parquet(ds):
-    ds = ds.reset_index()
     ds["valid_time"] = pd.to_datetime(ds["valid_time"])
     ds["year"] = ds["valid_time"].dt.year
     ds.to_parquet(f"{PROCESSED_DIR}/khmao_master.parquet", index=True)

@@ -5,31 +5,14 @@ from sklearn.metrics import roc_auc_score, classification_report, roc_curve, roc
 from src.config import PROCESSED_DIR
 import matplotlib.pyplot as plt
 
-def train_and_evaluate():
-    df = pd.read_parquet(f"{PROCESSED_DIR}/khmao_master.parquet")
-    print("Loaded: ", df.shape)
-    
-    train = df[df["year"] <= 2024]
-    test = df[df["year"] >= 2025]
-    
-    print("Train: ", train.shape)
-    print("Test: ", test.shape)
-    
-    features = [
-        "temp",
-        "vpd",
-        "precip",
-        "dem",
-        "landcover",
-        "ghm"
-    ]
-    
-    X_train = train[features]
-    y_train = train["fire"]
-    
-    X_test = test[features]
-    y_test = test["fire"]
-    
+def train_and_evaluate(
+    model, 
+    X_train,
+    y_train,
+    X_test,
+    y_test,
+    features
+):  
     model.fit(X_train, y_train)
     
     probs = model.predict_proba(X_test)[:, 1]
