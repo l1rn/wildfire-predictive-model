@@ -5,7 +5,7 @@ from sklearn.metrics import roc_auc_score, classification_report, roc_curve, roc
 from src.config import PROCESSED_DIR
 import matplotlib.pyplot as plt
 
-def ptrain_and_evaluate(
+def train_and_evaluate(
     model, 
     X_train,
     y_train,
