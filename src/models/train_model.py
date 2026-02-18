@@ -1,15 +1,13 @@
 import pandas as pd
+from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import roc_auc_score, classification_report
+from sklearn.metrics import roc_auc_score, classification_report, roc_curve, roc_auc_score
 from src.config import PROCESSED_DIR
+import matplotlib.pyplot as plt
 
-def train_model_on_master_table():
+def train_and_evaluate():
     df = pd.read_parquet(f"{PROCESSED_DIR}/khmao_master.parquet")
     print("Loaded: ", df.shape)
-    df = df.reset_index()
-    
-    df["valid_time"] = pd.to_datetime(df["valid_time"])
-    df["year"] = df["valid_time"].dt.year
     
     train = df[df["year"] <= 2024]
     test = df[df["year"] >= 2025]
@@ -31,14 +29,6 @@ def train_model_on_master_table():
     
     X_test = test[features]
     y_test = test["fire"]
-    
-    model = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=15,
-        class_weight="balanced",
-        n_jobs=1,
-        random_state=42
-    )
     
     model.fit(X_train, y_train)
     

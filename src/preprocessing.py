@@ -6,6 +6,8 @@ from rioxarray.raster_array import RasterArray
 from rasterio.features import rasterize
 import xarray as xr
 
+from tqdm.auto import tqdm
+
 KELVIN = 273.15
 
 def calculate_vpd(t2m_k, d2m_k):
@@ -54,7 +56,7 @@ def rasterize_monthly_fire(
     fire_rasters = []
     template_rio: RasterArray = template.rio
     
-    for time in climate_da.valid_time.values:
+    for time in tqdm(climate_da.valid_time.values, desc="Rasterizing Fire Data"):
         month = pd.to_datetime(time).to_period("M")
         monthly_fires = firms_gdf[firms_gdf["year_month"] == month]
         if len(monthly_fires) == 0:
@@ -142,5 +144,8 @@ def process_data():
     return dataset
 
 def upload_dataset_to_parquet(ds):
+    ds = ds.reset_index()
+    ds["valid_time"] = pd.to_datetime(ds["valid_time"])
+    ds["year"] = ds["valid_time"].dt.year
     ds.to_parquet(f"{PROCESSED_DIR}/khmao_master.parquet", index=True)
     
