@@ -1,2 +1,2 @@
 # Wildfire predictive model
-![](docs/Figure_1.png)
+![](docs/wildfire_risk_july_2025.jpg)

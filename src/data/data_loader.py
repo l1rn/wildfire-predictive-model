@@ -2,6 +2,7 @@ import xarray as xr
 import rioxarray
 import pandas as pd
 import geopandas as gpd
+from src.config import PROCESSED_DIR
 
 from typing import Optional
 
@@ -38,3 +39,9 @@ def load_firms(path: str) -> Optional[gpd.GeoDataFrame]:
     except Exception as e:
         print(f"Failed to Open CSV: {e}")
         return None
+    
+def load_master_dataset():
+    df = pd.read_parquet(f"{PROCESSED_DIR}/khmao_master.parquet")
+    df = df.reset_index()
+    df["valid_time"] = pd.to_datetime(df["valid_time"])
+    return df

@@ -1,4 +1,4 @@
-from src.data_loader import *
+from data.data_loader import *
 from src.config import DATA_DIR, PROCESSED_DIR
 import numpy as np
 

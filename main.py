@@ -1,9 +1,12 @@
-from src.preprocessing import process_data, upload_dataset_to_parquet
-from src.models.train_model import train_and_evaluate
+from src.data.data_loader import load_master_dataset
+from src.models.train_model import train_model, evaluate_model, generate_forecast
 from src.models.models import get_xgboost, get_random_forest
-from src.features import create_lag_features
+
+from src.visualization import maps
+import src.features.features as ft
+from src.data import split
+
 import sys
-import pandas as pd
 from src.config import PROCESSED_DIR 
 
 def main():
@@ -11,26 +14,19 @@ def main():
     try:
         # ds = process_data()
         # upload_dataset_to_parquet(ds)
-        df = pd.read_parquet(f"{PROCESSED_DIR}/khmao_master.parquet")
+        df = load_master_dataset()
         print("Loaded: ", df.shape)
 
-        df = df.reset_index()
-
-        df = df.sort_values(["y", "x", "valid_time"])        
-        df = create_lag_features(df)
-        
-        df = df.dropna()
-        
-        train = df[df["year"] <= 2024]
-        test = df[df["year"] >= 2025]
+        df = ft.prepare_features(df)
+        train, test, future = split.temporal_split(df)    
         
         print("Train: ", train.shape)
         print("Test: ", test.shape)
         
         features = [
-            "temp_lag2",
-            "vpd_lag2",
-            "precip_lag2",
+            "temp",
+            "vpd",
+            "precip",
             "dem",
             "landcover",
             "ghm",
@@ -46,37 +42,25 @@ def main():
         xgb_model = get_xgboost(len(y_train) / y_train.sum())
         rf = get_random_forest()
         
-        print("=== XGBoost ===")
-        probs = train_and_evaluate(model=xgb_model, 
-                           X_train=X_train, 
-                           y_train=y_train, 
-                           X_test=X_test, 
-                           y_test=y_test,
-                           features=features)
+        main_model = train_model(
+            model=xgb_model, X_train=X_train, y_train=y_train
+        )
         
-        test = test.copy()
-        test["fire_probability"] = probs
+        probs = evaluate_model(
+            model=main_model, X_test=X_test, y_test=y_test, features=features
+        )
         
-        july_2025 = test[
-            (test["valid_time"].dt.year == 2025) &
-            (test["valid_time"].dt.month == 7)
-        ]
-
-        risk_map = july_2025.pivot(
-            index="y",
-            columns="x",
-            values="fire_probability"
+        future = generate_forecast(
+            model=main_model, df=future, features=features
         )
 
-        import matplotlib.pyplot as plt
-
-        plt.figure(figsize=(10, 8))
-        plt.imshow(risk_map, origin="lower")
-        plt.colorbar(label="Wildfire Probability")
-        plt.title("Wildfire Risk Forecast – July 2025")
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        plt.show()
+        maps.plot_month_map(
+            future,
+            year=2026,
+            month=1,
+            title="Wildfire Forecast – January 2026",
+            save_path="wildfire_risk_jan_2026.jpg"
+        )
         # print("=== Random Forest ===")
         # train_and_evaluate(model=rf, 
         #                    X_train=X_train, 
